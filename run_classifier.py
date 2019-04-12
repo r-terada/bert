@@ -57,7 +57,7 @@ flags.DEFINE_string(
     "Initial checkpoint (usually from a pre-trained BERT model).")
 
 flags.DEFINE_bool(
-    "do_lower_case", True,
+    "do_lower_case", False,  # prevent accent marks from being removed
     "Whether to lower case the input text. Should be True for uncased "
     "models and False for cased models.")
 

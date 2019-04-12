@@ -988,3 +988,29 @@ For help or issues using BERT, please submit a GitHub issue.
 For personal communication related to BERT, please contact Jacob Devlin
 (`jacobdevlin@google.com`), Ming-Wei Chang (`mingweichang@google.com`), or
 Kenton Lee (`kentonl@google.com`).
+
+
+# 日本語NER実験
+ - 京大からダウンロードしたcheckpoin相当のフォルダを展開:
+    - `Japanese_L-12_H-768_A-12_E-30_BPE/`
+ - conll2003フォーマットのNERデータを(以下の例だと) `NERdata`以下に展開(`train.txt, dev.txt, test.txt`)
+    - sample: `太郎 B-PERSON\nの O\n家 O\n\nワシントン B-ORGANIZATION\n大学 I-ORGANIZATION\n\n`
+ - mkdir -p output/result_dir
+ - 以下を実行:
+
+```python
+python run_classifier.py  \
+                  --task_name="NER"  \
+                  --do_train=True   \
+                  --do_eval=True   \
+                  --do_predict=True \
+                  --data_dir=NERdata   \
+                  --vocab_file=Japanese_L-12_H-768_A-12_E-30_BPE/vocab.txt  \
+                  --bert_config_file=Japanese_L-12_H-768_A-12_E-30_BPE/bert_config.json \
+                  --init_checkpoint=Japanese_L-12_H-768_A-12_E-30_BPE/bert_model.ckpt   \
+                  --max_seq_length=128   \
+                  --train_batch_size=32   \
+                  --learning_rate=2e-5   \
+                  --num_train_epochs=1.0   \
+                  --output_dir=./output/result_dir/
+```

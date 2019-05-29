@@ -202,10 +202,11 @@ class DataProcessor(object):
         contents = line.strip()
         word = line.strip().split(' ')[0]
         label = line.strip().split(' ')[-1]
+
         if contents.startswith("-DOCSTART-"):
           words.append('')
           continue
-        if len(contents) == 0 and words[-1] == eos:
+        if len(words) > 0 and len(contents) == 0 and words[-1] == eos:
           l = ' '.join([label for label in labels if len(label) > 0])
           w = ' '.join([word for word in words if len(word) > 0])
           lines.append([l, w])
@@ -651,7 +652,6 @@ def main(_):
     num_train_steps = int(
         len(train_examples) / FLAGS.train_batch_size * FLAGS.num_train_epochs)
     num_warmup_steps = int(num_train_steps * FLAGS.warmup_proportion)
-
   model_fn = model_fn_builder(
       bert_config=bert_config,
       num_labels=len(label_list) + 1,  # NOTE

@@ -26,6 +26,7 @@ import modeling
 import optimization
 import tokenization
 import tensorflow as tf
+tf.enable_eager_execution()
 
 import tf_metrics
 import pickle
@@ -652,10 +653,9 @@ def main(_):
     # compare predicted and gold labels
     preds = [[id2label[i] for i in labels if i != 0] for labels in result]
 
-    input_list = list(predict_input_fn({'batch_size': FLAGS.predict_batch_size}))
-    with tf.Session() as sess:
-      labels_all = [labels for input_batch in input_list
-                    for labels in sess.run( input_batch['label_ids'].eval() )]
+    input_iter = predict_input_fn({'batch_size': FLAGS.predict_batch_size})
+    labels_all = [labels for input_batch in input_iter
+                  for labels in input_batch['label_ids'].numpy()]
     golds = [[id2label[i] for i in labels if i != 0] for labels in labels_all]
     assert len(preds) == len(golds)
     report = bio_classification_report(golds, preds)

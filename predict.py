@@ -480,7 +480,7 @@ class SubwordWordConverter:
     @staticmethod
     def convert_subword_to_word_by_label(subword_labels):
         # subword.startswith('##') == True だけがsubwordとは限らない
-        words = []
+        words, labels = [], []
         for sw, lb in subword_labels:
             if lb == 'X':
                 assert len(words) > 0
@@ -489,8 +489,9 @@ class SubwordWordConverter:
                 word = prev + sw[2:]
             else:
                 word = sw
+                labels.append(lb)
             words.append(word)
-        return words
+        return words, labels
 
     @staticmethod
     def check_separator(inputs, labels):
@@ -503,30 +504,28 @@ class SubwordWordConverter:
                     return False
         return True
 
-    def convert_tokens_to_words(self, inputs, labels):
-        token_labels = [(i, l) for i, l in zip(inputs, labels) if l not in self.ignore_label_ids]
+    def convert_tokens_to_words(self, token_labels):
+        token_labels = [(i, l) for i, l in token_labels if l not in self.ignore_label_ids]
+        token_labels = [(i, l) for i, l in token_labels if i not in self.ignore_token_ids]
         token_ids, label_ids = zip(*token_labels)
-        token_ids_filtered = [i for i in token_ids if i not in self.ignore_token_ids]
-        tokens = self.tokenizer.convert_ids_to_tokens(token_ids_filtered)
-        labels = [self.id2label[i] for i in label_ids]
         # subword　-> word の復元
-        words = self.convert_subword_to_word_by_label(zip(tokens, labels))
-        labels = [l for l in labels if l != 'X']
+        subwords = self.tokenizer.convert_ids_to_tokens(token_ids)
+        labels = [self.id2label[i] for i in label_ids]
+        words, labels = self.convert_subword_to_word_by_label(zip(subwords, labels))
         return words, labels
 
     def convert_labels_by_gold(self, labels_ids, labels_gold_ids):
         labels_ids = [l for l in labels_ids if l not in self.ignore_label_ids]
-        labels = [self.id2label[i] for i in labels_ids]
         labels_gold_ids = [l for l in labels_gold_ids if l not in self.ignore_label_ids]
-        labels_gold = [self.id2label[i] for i in labels_gold_ids]
-        labels = [l for l, lg in zip(labels, labels_gold) if lg != 'X']
-        return labels
+        labels_ids = [l for l, lg in zip(labels_ids, labels_gold_ids) if lg != 18]
+        return labels_ids
 
     def convert_tokens_to_words_gold(self, inputs, labels_ids, labels_ids_gold):
         # words, labels = self.convert_tokens_to_words(self, inputs, labels)
         # labels_gold = self.convert_labels_gold(labels_gold)
-        words, labels_gold = self.convert_tokens_to_words(inputs, labels_ids_gold)
-        labels = self.convert_labels_by_gold(labels_ids, labels_ids_gold)
+        words, labels_gold = self.convert_tokens_to_words(zip(inputs, labels_ids_gold))
+        labels_ids = self.convert_labels_by_gold(labels_ids, labels_ids_gold)
+        labels = [self.id2label[i] for i in labels_ids]
         return words, labels, labels_gold
 
     def convert_tokens_to_words_list(self, inputs_list, labels_list_pred, labels_list_gold):

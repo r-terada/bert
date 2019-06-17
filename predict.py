@@ -183,11 +183,6 @@ class DataProcessor(object):
 
 class NerProcessor(DataProcessor):
 
-  def get_dev_examples(self, data_dir):
-    """See base class."""
-    return self._create_examples(
-        self._read_data(os.path.join(data_dir, "dev.txt")), "dev")
-
   def get_test_examples(self, data_dir):
     """See base class."""
     return self._create_examples(
@@ -233,7 +228,8 @@ def convert_single_example(ex_index, example, label_list, max_seq_length, tokeni
   label_map = {}
   for (i, label) in enumerate(label_list, 1):
     label_map[label] = i
-  with open('./output/label2id.pkl','wb') as w:
+  id2label_path = os.path.join(FLAGS.output_dir, "label2id.pkl")
+  with open(id2label_path,'wb') as w:
     pickle.dump(label_map, w)
 
   textlist = example.text.split(' ')
@@ -518,18 +514,27 @@ class SubwordWordConverter:
         labels = [l for l in labels if l != 'X']
         return words, labels
 
-    def convert_tokens_to_words_list(self, inputs_list, labels_list):
-        print(inputs_list, labels_list)
-        words_labels = [self.convert_tokens_to_words(ins, lbs)
-                         for ins, lbs in zip(inputs_list, labels_list)
-                         if self.check_separator(ins, lbs)]
-        inputs_word, labels_word = zip(*words_labels)
-        for (ins, lbs) in zip(inputs_word, labels_word):
-            if len(ins) != len(lbs):
-                print(len(ins), len(lbs))
-                print(ins)
-                print(lbs)
-        return inputs_word, labels_word
+    def convert_labels_by_gold(self, labels_ids, labels_gold_ids):
+        labels_ids = [l for l in labels_ids if l not in self.ignore_label_ids]
+        labels = [self.id2label[i] for i in labels_ids]
+        labels_gold_ids = [l for l in labels_gold_ids if l not in self.ignore_label_ids]
+        labels_gold = [self.id2label[i] for i in labels_gold_ids]
+        labels = [l for l, lg in zip(labels, labels_gold) if lg != 'X']
+        return labels
+
+    def convert_tokens_to_words_gold(self, inputs, labels_ids, labels_ids_gold):
+        # words, labels = self.convert_tokens_to_words(self, inputs, labels)
+        # labels_gold = self.convert_labels_gold(labels_gold)
+        words, labels_gold = self.convert_tokens_to_words(inputs, labels_ids_gold)
+        labels = self.convert_labels_by_gold(labels_ids, labels_ids_gold)
+        return words, labels, labels_gold
+
+    def convert_tokens_to_words_list(self, inputs_list, labels_list_pred, labels_list_gold):
+      words_labels = [self.convert_tokens_to_words_gold(ins, lbs, lbs_g)
+                      for ins, lbs, lbs_g in zip(inputs_list, labels_list_pred, labels_list_gold)
+                      if self.check_separator(ins, lbs)]
+      inputs_word, labels_word, labels_word_gold = zip(*words_labels)
+      return inputs_word, labels_word, labels_word_gold
 
 def main(_):
   tf.logging.set_verbosity(tf.logging.INFO)
@@ -591,7 +596,8 @@ def main(_):
   if FLAGS.do_predict:
     # read and export tokens
     token_path = os.path.join(FLAGS.output_dir, "token_test.txt")
-    with open('./output/label2id.pkl','rb') as rf:
+    id2label_path = os.path.join(FLAGS.output_dir, "label2id.pkl")
+    with open(id2label_path,'rb') as rf:
       label2id = pickle.load(rf)
       id2label = {value:key for key,value in label2id.items()}
     if os.path.exists(token_path):
@@ -618,18 +624,27 @@ def main(_):
     input_iter = predict_input_fn({'batch_size': 8})
     inputs_pred = [labels for input_batch in input_iter
                    for labels in input_batch['input_ids'].numpy()]
-    # labels_eval = [labels for input_batch in input_iter
-    # for labels in input_batch['label_ids'].numpy()]
-
+    input_iter = predict_input_fn({'batch_size': 8})
+    labels_gold = [labels for input_batch in input_iter
+                   for labels in input_batch['label_ids'].numpy()]
+    assert len(inputs_pred) == len(labels_gold)
     swc = SubwordWordConverter(tokenizer, id2label)
-    tokens_as_words, labels_per_word = swc.convert_tokens_to_words_list(inputs_pred, result)
     output_predict_file = os.path.join(FLAGS.output_dir, "token_label_pred.txt")
+    # tokens_as_words, labels_per_word = swc.convert_tokens_to_words_list(inputs_pred, result)
+    # with open(output_predict_file, 'w') as writer:
+    #   tf.logging.info("***** Predict results *****")
+    #   for i, (tokens, labels) in enumerate(zip(tokens_as_words, labels_per_word)):
+    #     output_line = "\n".join(
+    #         f'{token}\t{label}'
+    #         for token, label in zip(tokens, labels)) + "\n\n"
+    #     writer.write(output_line)
+    tokens_list, labels_list, labels_gold_list = swc.convert_tokens_to_words_list(inputs_pred, result, labels_gold)
     with open(output_predict_file, 'w') as writer:
       tf.logging.info("***** Predict results *****")
-      for i, (tokens, labels) in enumerate(zip(tokens_as_words, labels_per_word)):
+      for i, (tokens, labels, labels_gold) in enumerate(zip(tokens_list, labels_list, labels_gold_list)):
         output_line = "\n".join(
-            f'{token}\t{label}'
-            for token, label in zip(tokens, labels)) + "\n\n"
+            f'{token}\t{label}\t{label_gold}'
+            for token, label, label_gold in zip(tokens, labels, labels_gold)) + "\n\n"
         writer.write(output_line)
 
 if __name__ == "__main__":

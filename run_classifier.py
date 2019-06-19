@@ -26,6 +26,11 @@ import optimization
 import tokenization
 import tensorflow as tf
 
+from itertools import chain
+import pickle
+from sklearn.preprocessing import LabelBinarizer
+from sklearn.metrics import classification_report
+
 flags = tf.flags
 
 FLAGS = flags.FLAGS
@@ -246,6 +251,10 @@ class LivedoorProcessor(DataProcessor):
 def convert_single_example(ex_index, example, label_list, max_seq_length,
                            tokenizer):
     """Converts a single `InputExample` into a single `InputFeatures`."""
+
+    label_map = {label: i for (i, label) in enumerate(label_list, 1)}
+    with open(os.path.join(FLAGS.output_dir, 'label2id.pkl'), 'wb') as w:
+        pickle.dump(label_map, w)
 
     if isinstance(example, PaddingInputExample):
         return InputFeatures(
@@ -661,6 +670,29 @@ def convert_examples_to_features(examples, label_list, max_seq_length,
     return features
 
 
+def bio_classification_report(y_true, y_pred):
+    """
+    Classification report for a list of BIO-encoded sequences.
+    It computes token-level metrics and discards "O" labels.
+    Note that it requires scikit-learn 0.15+ (or a version from github master)
+    to calculate averages properly!
+    """
+    lb = LabelBinarizer()
+    y_true_combined = lb.fit_transform(list(chain.from_iterable(y_true)))
+    y_pred_combined = lb.transform(list(chain.from_iterable(y_pred)))
+
+    tagset = set(lb.classes_)
+    tagset = sorted(tagset)
+    class_indices = {cls: idx for idx, cls in enumerate(lb.classes_)}
+
+    return classification_report(
+        y_true_combined,
+        y_pred_combined,
+        labels=[class_indices[cls] for cls in tagset],
+        target_names=tagset,
+    )
+
+
 def main(_):
     tf.logging.set_verbosity(tf.logging.INFO)
 
@@ -804,6 +836,9 @@ def main(_):
                 writer.write("%s = %s\n" % (key, str(result[key])))
 
     if FLAGS.do_predict:
+        with open(os.path.join(FLAGS.output_dir, 'label2id.pkl'), 'rb') as rf:
+            label2id = pickle.load(rf)
+            id2label = {value: key for key, value in label2id.items()}
         predict_examples = processor.get_test_examples(FLAGS.data_dir)
         num_actual_predict_examples = len(predict_examples)
         if FLAGS.use_tpu:
@@ -833,6 +868,7 @@ def main(_):
             drop_remainder=predict_drop_remainder)
 
         result = estimator.predict(input_fn=predict_input_fn)
+        result = list(result)
 
         output_predict_file = os.path.join(
             FLAGS.output_dir, "test_results.tsv")
@@ -849,6 +885,22 @@ def main(_):
                 writer.write(output_line)
                 num_written_lines += 1
         assert num_written_lines == num_actual_predict_examples
+
+        # compare predicted and gold labels
+        preds = [[id2label[i] for i in labels if i != 0] for labels in result]
+
+        input_iter = predict_input_fn({'batch_size': FLAGS.predict_batch_size})
+        labels_all = [labels for input_batch in input_iter
+                      for labels in input_batch['label_ids'].numpy()]
+        golds = [[id2label[i] for i in labels if i != 0]
+                 for labels in labels_all]
+        assert len(preds) == len(golds)
+        report = bio_classification_report(golds, preds)
+        print(report)
+        output_report_file = os.path.join(FLAGS.output_dir, "report_test.txt")
+        with open(output_report_file, 'w') as writer:
+            writer.write(report)
+            writer.write('\n')
 
 
 if __name__ == "__main__":

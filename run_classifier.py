@@ -25,6 +25,7 @@ import modeling
 import optimization
 import tokenization
 import tensorflow as tf
+tf.enable_eager_execution()
 
 from itertools import chain
 import pickle
@@ -252,7 +253,7 @@ def convert_single_example(ex_index, example, label_list, max_seq_length,
                            tokenizer):
     """Converts a single `InputExample` into a single `InputFeatures`."""
 
-    label_map = {label: i for (i, label) in enumerate(label_list, 1)}
+    label_map = {label: i for (i, label) in enumerate(label_list)}
     with open(os.path.join(FLAGS.output_dir, 'label2id.pkl'), 'wb') as w:
         pickle.dump(label_map, w)
 
@@ -497,7 +498,9 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
         per_example_loss = -tf.reduce_sum(one_hot_labels * log_probs, axis=-1)
         loss = tf.reduce_mean(per_example_loss)
 
-        return (loss, per_example_loss, logits, probabilities)
+        predict = tf.argmax(probabilities, axis=-1)
+
+        return (loss, per_example_loss, logits, probabilities, predict)
 
 
 def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
@@ -526,7 +529,7 @@ def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
 
         is_training = (mode == tf.estimator.ModeKeys.TRAIN)
 
-        (total_loss, per_example_loss, logits, probabilities) = create_model(
+        (total_loss, per_example_loss, logits, probabilities, predicts) = create_model(
             bert_config, is_training, input_ids, input_mask, segment_ids, label_ids,
             num_labels, use_one_hot_embeddings)
 
@@ -589,7 +592,7 @@ def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
         else:
             output_spec = tf.contrib.tpu.TPUEstimatorSpec(
                 mode=mode,
-                predictions={"probabilities": probabilities},
+                predictions={"probabilities": probabilities, "predict": predicts},
                 scaffold_fn=scaffold_fn)
         return output_spec
 
@@ -678,8 +681,8 @@ def bio_classification_report(y_true, y_pred):
     to calculate averages properly!
     """
     lb = LabelBinarizer()
-    y_true_combined = lb.fit_transform(list(chain.from_iterable(y_true)))
-    y_pred_combined = lb.transform(list(chain.from_iterable(y_pred)))
+    y_true_combined = lb.fit_transform(y_true)
+    y_pred_combined = lb.transform(y_pred)
 
     tagset = set(lb.classes_)
     tagset = sorted(tagset)
@@ -887,13 +890,13 @@ def main(_):
         assert num_written_lines == num_actual_predict_examples
 
         # compare predicted and gold labels
-        preds = [[id2label[i] for i in labels if i != 0] for labels in result]
+        result_pred = [d["predict"] for d in result]
+        preds = [id2label[label] for label in result_pred]
 
         input_iter = predict_input_fn({'batch_size': FLAGS.predict_batch_size})
-        labels_all = [labels for input_batch in input_iter
-                      for labels in input_batch['label_ids'].numpy()]
-        golds = [[id2label[i] for i in labels if i != 0]
-                 for labels in labels_all]
+        labels_all = [label for input_batch in input_iter
+                      for label in input_batch['label_ids'].numpy()]
+        golds = [id2label[label] for label in labels_all]
         assert len(preds) == len(golds)
         report = bio_classification_report(golds, preds)
         print(report)

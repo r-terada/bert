@@ -151,7 +151,7 @@ def convert_ids_to_tokens(inv_vocab, ids):
 
 def whitespace_tokenize(text):
   """Runs basic whitespace cleaning and splitting on a piece of text."""
-  text = text.strip()
+  # text = text.strip()
   if not text:
     return []
   tokens = text.split()
@@ -367,9 +367,9 @@ def _is_whitespace(char):
   # as whitespace since they are generally considered as such.
   if char == " " or char == "\t" or char == "\n" or char == "\r":
     return True
-  cat = unicodedata.category(char)
-  if cat == "Zs":
-    return True
+  # cat = unicodedata.category(char)
+  # if cat == "Zs":
+  #   return True
   return False
 
 

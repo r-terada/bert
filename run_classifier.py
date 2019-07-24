@@ -190,33 +190,6 @@ class DataProcessor(object):
     """Gets the list of labels for this data set."""
     raise NotImplementedError()
 
-  @classmethod
-  def _read_data(cls, input_file, eos='。'):
-    """Reads a IOB data."""
-    # with tf.gfile.Open(input_file, "r") as f:
-    with open(input_file) as f:
-      lines = []
-      words = []
-      labels = []
-      for line in f:
-        contents = line.strip()
-        word = line.strip().split(' ')[0]
-        label = line.strip().split(' ')[-1]
-
-        if contents.startswith("-DOCSTART-"):
-          words.append('')
-          continue
-        if len(words) > 0 and len(contents) == 0 and words[-1] == eos:
-          l = ' '.join([label for label in labels if len(label) > 0])
-          w = ' '.join([word for word in words if len(word) > 0])
-          lines.append([l, w])
-          words = []
-          labels = []
-          continue
-        words.append(word)
-        labels.append(label)
-      return lines
-
 
 class NerProcessor(DataProcessor):
   def get_train_examples(self, data_dir):
@@ -246,6 +219,32 @@ class NerProcessor(DataProcessor):
             "B-PERCENT", "I-PERCENT", #"E-PERCENT", "S-PERCENT",
             "O", "X", "[CLS]","[SEP]"]
 
+  def _read_data(self, input_file, eos='。'):
+    """Reads a IOB data."""
+    # with tf.gfile.Open(input_file, "r") as f:
+    with open(input_file) as f:
+      lines = []
+      words = []
+      labels = []
+      for line in f:
+        contents = line.strip()
+        word = line.strip().split(' ')[0]
+        label = line.strip().split(' ')[-1]
+
+        if contents.startswith("-DOCSTART-"):
+          words.append('')
+          continue
+        if len(words) > 0 and len(contents) == 0 and words[-1] == eos:
+          l = ' '.join([label for label in labels if len(label) > 0])
+          w = ' '.join([word for word in words if len(word) > 0])
+          lines.append([l, w])
+          words = []
+          labels = []
+          continue
+        words.append(word)
+        labels.append(label)
+      return lines
+
   def _create_examples(self, lines, set_type):
     """Creates examples for the training and dev sets."""
     # set_type: train/dev/test
@@ -256,6 +255,74 @@ class NerProcessor(DataProcessor):
       label = tokenization.convert_to_unicode(line[0])
       examples.append(InputExample(guid=guid, text=text, label=label))
     return examples
+
+
+class POSTaggingProcessor(DataProcessor):
+  def get_train_examples(self, data_dir):
+    """See base class."""
+    return self._create_examples(
+        self._read_data(os.path.join(data_dir, "train.txt")), "train")
+
+  def get_dev_examples(self, data_dir):
+    """See base class."""
+    return self._create_examples(
+        self._read_data(os.path.join(data_dir, "dev.txt")), "dev")
+
+  def get_test_examples(self,data_dir):
+    """See base class."""
+    return self._create_examples(
+        self._read_data(os.path.join(data_dir, "test.txt")), "test")
+
+  def get_labels(self):
+    return ["副詞", "助詞", "動詞", "名詞", "特殊", "判定詞",
+            "助動詞", "形容詞", "感動詞", "指示詞", "接尾辞",
+            "接続詞", "接頭辞", "連体詞", "未定義語", "O", "0",
+            "X", "[CLS]","[SEP]"]
+
+  def _read_data(self, input_file, eos='。'):
+    """Reads a IOB data."""
+    # with tf.gfile.Open(input_file, "r") as f:
+    with open(input_file) as f:
+      lines = []
+      words = []
+      labels = []
+      for line in f:
+        contents = line.strip()
+
+        if len(contents.split(' ')) == 3:
+          word = contents.split(' ')[0]
+          label = contents.split(' ')[1]
+        elif len(contents.split(' ')) == 2:
+          word = ''
+          label = contents.split(' ')[0]
+        else:
+          pass
+
+        if contents.startswith("-DOCSTART-"):
+          words.append('')
+          continue
+        if len(words) > 0 and len(contents) == 0 and words[-1] == eos:
+          l = ' '.join([label for label in labels if len(label) > 0])
+          w = ' '.join([word for word in words if len(word) > 0])
+          lines.append([l, w])
+          words = []
+          labels = []
+          continue
+        words.append(word)
+        labels.append(label)
+      return lines
+
+  def _create_examples(self, lines, set_type):
+    """Creates examples for the training and dev sets."""
+    # set_type: train/dev/test
+    examples = []
+    for (i, line) in enumerate(lines):
+      guid = "%s-%s" % (set_type, i)
+      text = tokenization.convert_to_unicode(line[1])
+      label = tokenization.convert_to_unicode(line[0])
+      examples.append(InputExample(guid=guid, text=text, label=label))
+    return examples
+
 
 def convert_single_example(ex_index, example, label_list, max_seq_length, tokenizer, mode):
 
@@ -599,7 +666,8 @@ def main(_):
   tf.logging.set_verbosity(tf.logging.INFO)
 
   processors = {
-      "ner": NerProcessor
+      "ner": NerProcessor,
+      "pos": POSTaggingProcessor
   }
 
   if not FLAGS.do_train and not FLAGS.do_eval and not FLAGS.do_predict:

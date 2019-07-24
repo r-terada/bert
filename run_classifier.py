@@ -737,7 +737,7 @@ def main(_):
 
   if FLAGS.do_predict:
     token_path = os.path.join(FLAGS.output_dir, "token_test.txt")
-    with open('./output/label2id.pkl','rb') as rf:
+    with open(f'{FLAGS.output_dir}/label2id.pkl','rb') as rf:
       label2id = pickle.load(rf)
       id2label = {value:key for key,value in label2id.items()}
     if os.path.exists(token_path):
